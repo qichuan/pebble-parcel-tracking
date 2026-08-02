@@ -1,0 +1,44 @@
+{
+  "name": "Parcel Tracking",
+  "author": "Zhang Qichuan",
+  "version": "1.0.0",
+  "keywords": ["pebble-app, parcel, package, tracking, shipping, delivery, ship24"],
+  "private": true,
+  "dependencies": {},
+  "pebble": {
+    "displayName": "Parcel Tracking",
+    "uuid": "e971f485-c313-4b57-bab5-daae3525a83f",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "capabilities": ["configurable"],
+    "targetPlatforms": [
+      "aplite",
+      "basalt",
+      "chalk",
+      "diorite",
+      "emery",
+      "flint",
+      "gabbro"
+    ],
+    "watchapp": {
+      "watchface": false
+    },
+    "messageKeys": [
+      "REQUEST",
+      "INDEX",
+      "TYPE",
+      "PAYLOAD",
+      "ERROR"
+    ],
+    "resources": {
+      "media": [
+        {
+          "menuIcon": true,
+          "type": "bitmap",
+          "name": "IMAGE_MENU_ICON",
+          "file": "images/menu_icon.png"
+        }
+      ]
+    }
+  }
+}

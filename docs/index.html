@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parcel Tracking Settings</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #f5f5f5; color: #000;
+    margin: 0; padding: 24px 16px; max-width: 460px; margin-inline: auto;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #121212; color: #eee; }
+    .sub { color: #bbb !important; }
+  }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 24px 0 8px; }
+  .sub { color: #555; margin: 0 0 20px; font-size: 14px; }
+  .card {
+    background: #fff; color: #000; border-radius: 12px; padding: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.12); margin-bottom: 12px;
+  }
+  label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 5px; }
+  input {
+    width: 100%; padding: 10px 12px; font-size: 15px; background: #fff; color: #000;
+    border: 1px solid #ccc; border-radius: 8px; margin-bottom: 10px;
+  }
+  input:last-of-type { margin-bottom: 0; }
+  .hint { font-size: 12px; color: #555; margin: 4px 0 0; }
+  .hint a { color: #c2410c; }
+  .row-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .row-head b { font-size: 13px; color: #555; letter-spacing: .04em; }
+  .remove {
+    background: none; border: 0; color: #b91c1c; font-size: 13px;
+    font-weight: 600; padding: 2px 4px; cursor: pointer; width: auto;
+  }
+  .cols { display: flex; gap: 8px; }
+  .cols > div { flex: 1; }
+  button {
+    width: 100%; padding: 12px; font-size: 16px; font-weight: 600;
+    border: 0; border-radius: 8px; cursor: pointer;
+  }
+  .primary { background: #ea580c; color: #fff; margin-top: 16px; }
+  .secondary {
+    background: #fff; color: #ea580c; border: 1px solid #ea580c;
+  }
+  #msg { margin-top: 14px; font-size: 14px; text-align: center; min-height: 20px; }
+  .warn { color: #b45309; }
+</style>
+</head>
+<body>
+  <h1>Parcel Tracking</h1>
+  <p class="sub">Watch your parcels from your wrist, powered by Ship24.</p>
+
+  <div class="card">
+    <label for="api_key">Ship24 API key</label>
+    <input id="api_key" placeholder="Paste your API key"
+           autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <p class="hint">Get one free at
+      <a href="https://dashboard.ship24.com" target="_blank">dashboard.ship24.com</a>
+      → Integrations → API Keys.</p>
+  </div>
+
+  <h2>Parcels</h2>
+  <div id="parcels"></div>
+  <button type="button" class="secondary" id="add">+ Add parcel</button>
+
+  <button type="button" class="primary" id="save">Save</button>
+  <p id="msg"></p>
+
+<script>
+(function () {
+  function qs(name) {
+    var m = new RegExp('[?&]' + name + '=([^&]*)').exec(location.search);
+    return m ? decodeURIComponent(m[1].replace(/\+/g, ' ')) : null;
+  }
+  function setMsg(text, cls) {
+    var el = document.getElementById('msg');
+    el.textContent = text;
+    el.className = cls || '';
+  }
+  function trim(s) { return String(s == null ? '' : s).replace(/^\s+|\s+$/g, ''); }
+
+  var returnTo = qs('return_to') || 'pebblejs://close#';
+  var list = document.getElementById('parcels');
+
+  if (qs('has_key') === '1') {
+    document.getElementById('api_key').placeholder = '•••••• (unchanged)';
+  }
+
+  // One card per parcel. Rows are read back off the DOM on save, so there's no
+  // separate model to keep in sync.
+  function addRow(parcel) {
+    parcel = parcel || {};
+    var card = document.createElement('div');
+    card.className = 'card parcel';
+    card.innerHTML =
+      '<div class="row-head"><b>PARCEL</b>' +
+      '<button type="button" class="remove">Remove</button></div>' +
+      '<label>Name</label>' +
+      '<input class="nickname" placeholder="Headphones" maxlength="36">' +
+      '<label>Tracking number</label>' +
+      '<input class="number" placeholder="1234567890AB" maxlength="64" ' +
+      'autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false">' +
+      '<label>Courier code <span style="font-weight:400">(optional)</span></label>' +
+      '<input class="courier" placeholder="dhl" maxlength="24" ' +
+      'autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">' +
+      '<p class="hint">Leave the courier blank to let Ship24 detect it.</p>';
+    card.querySelector('.nickname').value = parcel.nickname || '';
+    card.querySelector('.number').value = parcel.trackingNumber || '';
+    card.querySelector('.courier').value = parcel.courierCode || '';
+    card.querySelector('.remove').addEventListener('click', function () {
+      list.removeChild(card);
+      renumber();
+    });
+    list.appendChild(card);
+    renumber();
+  }
+
+  function renumber() {
+    var cards = list.querySelectorAll('.parcel');
+    for (var i = 0; i < cards.length; i++) {
+      cards[i].querySelector('b').textContent = 'PARCEL ' + (i + 1);
+    }
+  }
+
+  var existing = [];
+  try { existing = JSON.parse(qs('parcels') || '[]'); } catch (e) {}
+  for (var i = 0; i < existing.length; i++) addRow(existing[i]);
+  if (!existing.length) addRow();
+
+  document.getElementById('add').addEventListener('click', function () {
+    if (list.querySelectorAll('.parcel').length >= 12) {
+      setMsg('The watch shows at most 12 parcels.', 'warn');
+      return;
+    }
+    setMsg('');
+    addRow();
+  });
+
+  document.getElementById('save').addEventListener('click', function () {
+    var cards = list.querySelectorAll('.parcel');
+    var parcels = [];
+    var seen = {};
+    for (var i = 0; i < cards.length; i++) {
+      var number = trim(cards[i].querySelector('.number').value).replace(/\s+/g, '');
+      if (!number) continue; // an empty card just means "not filled in"
+      if (seen[number]) {
+        setMsg('Tracking number ' + number + ' is listed twice.', 'warn');
+        return;
+      }
+      seen[number] = true;
+      parcels.push({
+        nickname: trim(cards[i].querySelector('.nickname').value) || number,
+        trackingNumber: number,
+        courierCode: trim(cards[i].querySelector('.courier').value).toLowerCase(),
+      });
+    }
+
+    var key = trim(document.getElementById('api_key').value);
+    if (!key && qs('has_key') !== '1') {
+      setMsg('Enter your Ship24 API key.', 'warn');
+      return;
+    }
+
+    var payload = { action: 'save', parcels: parcels };
+    if (key) payload.apiKey = key;
+    setMsg('Saving…');
+    location.href = returnTo + encodeURIComponent(JSON.stringify(payload));
+  });
+})();
+</script>
+</body>
+</html>

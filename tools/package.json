@@ -1,0 +1,13 @@
+{
+  "name": "pebble-parcel-tracking-tools",
+  "private": true,
+  "description": "Tests for the pkjs bridge and the settings page. Not shipped to the watch.",
+  "scripts": {
+    "test": "node test-pkjs.js && node test-settings.js",
+    "test:pkjs": "node test-pkjs.js",
+    "test:settings": "node test-settings.js"
+  },
+  "devDependencies": {
+    "jsdom": "^30.0.1"
+  }
+}
