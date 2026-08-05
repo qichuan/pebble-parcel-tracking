@@ -389,6 +389,23 @@ static void prv_on_data(const char *type, const char *payload, int pending) {
   prv_reload();
 }
 
+// Bluetooth came or went. Say so at once rather than letting the user find out
+// when a request eventually times out — and when it comes back, comm replays
+// the outstanding request itself, so there's nothing to do but stop claiming
+// the data is unconfirmed.
+static void prv_on_connection(bool connected) {
+  if (!connected) {
+    if (s_state == STATE_LOADED && s_count > 0) {
+      s_disconnected = true;
+      s_updating = false;
+      prv_reload();
+    }
+    return;
+  }
+  s_disconnected = false;
+  prv_reload();
+}
+
 static void prv_on_error(const char *message) {
   s_updating = false;
   // A failed refresh shouldn't wipe a list we already have — it should say so.
@@ -478,6 +495,12 @@ static void prv_window_unload(Window *window) {
 // back (and pick up any status change) when the list is shown again.
 static void prv_window_appear(Window *window) {
   comm_set_handlers(prv_on_data, prv_on_error);
+  comm_set_connection_handler(prv_on_connection);
+  // The timeline window cancels its request on the way out, so if we came back
+  // with nothing to show there is no longer anything in flight to wait for.
+  if (s_state != STATE_LOADED || s_count == 0) {
+    prv_start_request(false);
+  }
   prv_reload();
 }
 

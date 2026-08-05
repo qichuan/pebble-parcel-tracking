@@ -123,11 +123,18 @@ and opened on a screen of its own, which is why `MAX_DESC_BYTES` is generous
 - `status_colour.c` — the design palette (`COLOUR_*` in the header) plus the
   milestone → colour mapping. Every value sits inside Pebble's 64-colour space
   with channels of 00/55/AA/FF, so nothing dithers unexpectedly.
-- `comm.c` — AppMessage transport (4096/128 buffers). Two independent retries:
-  three send attempts if the outbox won't take the message, and three re-asks if
-  a sent request goes unanswered. Windows register handlers via
-  `comm_set_handlers` in their `.appear` handler, so whichever window is visible
-  receives the replies.
+- `comm.c` — AppMessage transport (4096/128 buffers). Three failure modes, three
+  answers: the outbox refusing the message (retry with growing delay), a sent
+  request going unanswered (re-ask with growing delay, a long tail because the
+  window has to cover phone-side JS booting), and Bluetooth simply being gone.
+  That last one is why `connection_service` is subscribed: with no phone there,
+  retrying only burns the budget, so the request is parked and **replayed the
+  moment the link returns**. After giving up entirely a slow background retry
+  keeps running, so a blip heals itself without the user pressing anything.
+  Windows register handlers via `comm_set_handlers` in their `.appear` handler,
+  so whichever window is visible receives the replies — and call `comm_cancel`
+  on the way out, or an abandoned request's retries surface as an error on the
+  window behind it.
 
 Buffers are fixed-size and static (aplite has 24 KB of RAM for everything);
 `prv_parse_*` reads the payload one line at a time rather than copying it.

@@ -399,6 +399,10 @@ static void prv_window_load(Window *window) {
 }
 
 static void prv_window_unload(Window *window) {
+  // Drop the request on the way out. Left running, its retries would eventually
+  // report a failure on the list window behind us for a screen the user has
+  // already left.
+  comm_cancel();
   layer_destroy(s_content_layer);
   layer_destroy(s_header_layer);
   scroll_layer_destroy(s_scroll_layer);
