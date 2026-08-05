@@ -150,7 +150,7 @@ static int16_t prv_cell_height(MenuLayer *ml, MenuIndex *idx, void *ctx) {
   if (idx->row >= s_count) return 22; // footer
   // Disconnected rows drop the second line's breathing room: the design tightens
   // them to signal "this is what we last knew", not "this is what's true".
-  return s_disconnected ? s_row_h - 5 : s_row_h;
+  return s_disconnected ? s_row_h - 4 : s_row_h;
 }
 
 static int16_t prv_header_height(MenuLayer *ml, uint16_t section, void *ctx) {
@@ -327,16 +327,19 @@ static void prv_draw_row(GContext *ctx, const Layer *cell, MenuIndex *idx,
 #endif
 
   int name_y = bounds.origin.y + s_name_y;
-  int sub_y = bounds.origin.y + (s_disconnected ? s_sub_y - 4 : s_sub_y);
+  int sub_y = bounds.origin.y + (s_disconnected ? s_sub_y - 3 : s_sub_y);
 
+  // Boxes run to the bottom of the cell rather than a fixed height: both lines
+  // are single-line and ellipsized, so extra room costs nothing and a box that
+  // is shorter than the font's line height clips the descenders.
   graphics_context_set_text_color(ctx, name_colour);
   graphics_draw_text(ctx, row->nickname, s_name_font,
-                     GRect(left, name_y, width, 22),
+                     GRect(left, name_y, width, bounds.size.h - s_name_y),
                      GTextOverflowModeTrailingEllipsis, align, NULL);
 
   graphics_context_set_text_color(ctx, sub_colour);
   graphics_draw_text(ctx, row->label, s_sub_font,
-                     GRect(left, sub_y, width, 20),
+                     GRect(left, sub_y, width, bounds.size.h - s_sub_y),
                      GTextOverflowModeTrailingEllipsis, align, NULL);
 }
 
@@ -406,32 +409,34 @@ static void prv_on_error(const char *message) {
 static void prv_choose_metrics(GRect bounds) {
 #if defined(PBL_ROUND)
   s_header_h = 26;
-  s_row_h = 42;
-  s_name_y = 5;
-  s_sub_y = 22;
+  s_row_h = 48;
+  s_name_y = 2;
+  s_sub_y = 24;
   s_pad = 16; // the mask cuts into both ends of every line
-  s_name_font = fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD);
+  s_name_font = fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
   s_sub_font = fonts_get_system_font(FONT_KEY_GOTHIC_14);
   s_head_font = fonts_get_system_font(FONT_KEY_GOTHIC_14);
 #else
   if (bounds.size.w >= 180) {
     // Emery and friends: type and rows step up with the panel.
-    s_header_h = 24;
-    s_row_h = 46;
-    s_name_y = 4;
-    s_sub_y = 25;
+    s_header_h = 26;
+    s_row_h = 58;
+    s_name_y = 2;
+    s_sub_y = 29;
     s_pad = 10;
-    s_name_font = fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
-    s_sub_font = fonts_get_system_font(FONT_KEY_GOTHIC_14);
+    s_name_font = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
+    s_sub_font = fonts_get_system_font(FONT_KEY_GOTHIC_18);
     s_head_font = fonts_get_system_font(FONT_KEY_GOTHIC_18);
   } else {
     s_header_h = 20;
-    s_row_h = 37;
-    s_name_y = 1;
-    s_sub_y = 18;
+    s_row_h = 43;
+    s_name_y = 0;
+    s_sub_y = 21;
     s_pad = 8;
-    s_name_font = fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD);
+    s_name_font = fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
     s_sub_font = fonts_get_system_font(FONT_KEY_GOTHIC_14);
+    // The glance bar stays a step down: it labels the list rather than being
+    // it, and "NONE ARRIVING TODAY" only fits across 144px at this size.
     s_head_font = fonts_get_system_font(FONT_KEY_GOTHIC_14);
   }
 #endif

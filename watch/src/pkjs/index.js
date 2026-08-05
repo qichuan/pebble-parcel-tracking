@@ -328,7 +328,16 @@ function whenLabel(ms) {
 
 function parseEta(raw) {
   if (!raw) return null;
-  var t = Date.parse(String(raw));
+  var s = String(raw);
+  // Ship24 usually gives a bare calendar date. That's a date in the user's own
+  // timezone, not an instant — but Date.parse reads "2026-08-06" as UTC
+  // midnight, which is still Aug 5 anywhere west of Greenwich and would report
+  // a parcel as due a day early. Build it from the local calendar instead.
+  var ymd = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (ymd) {
+    return new Date(+ymd[1], +ymd[2] - 1, +ymd[3]).getTime();
+  }
+  var t = Date.parse(s);
   return isNaN(t) ? null : t;
 }
 
@@ -673,3 +682,4 @@ Pebble.addEventListener('webviewclosed', function (e) {
   }
   registerNext();
 });
+

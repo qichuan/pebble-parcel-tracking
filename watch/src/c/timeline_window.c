@@ -51,6 +51,10 @@ static int s_header_h;
 static int s_pad;    // horizontal breathing room at the screen edge
 static int s_rail_x; // the timeline's dot column, just outside the text margin
 static int s_indent; // timeline text, clear of the dots
+// Vertical metrics that follow the type scale rather than a fixed line height.
+static int s_caption_dy; // caption baseline to its value
+static int s_day_h;      // a day heading's own line
+static int s_dot_dy;     // dot centred on the event label's first line
 static GFont s_hero_font;
 static GFont s_value_font;
 static GFont s_body_font;
@@ -150,9 +154,10 @@ static int prv_fact(GContext *ctx, const char *caption, const char *value,
   GSize size = prv_measure(value, font, inner);
   if (draw) {
     prv_text(ctx, caption, s_small_font, COLOUR_DIM, s_pad, y, inner);
-    prv_text(ctx, value, font, quiet ? COLOUR_DIM : COLOUR_INK, s_pad, y + 13, inner);
+    prv_text(ctx, value, font, quiet ? COLOUR_DIM : COLOUR_INK, s_pad,
+             y + s_caption_dy, inner);
   }
-  return 13 + size.h + 3;
+  return s_caption_dy + size.h + 3;
 }
 
 // Walks the whole page. Returns its total height; draws it too when `draw`.
@@ -205,7 +210,7 @@ static int prv_layout(GContext *ctx, int width, bool draw) {
       if (draw) {
         prv_text(ctx, row->day, s_small_font, COLOUR_DIM, text_x, y, text_w);
       }
-      y += 15;
+      y += s_day_h;
     }
 
     GSize label = prv_measure(row->label, s_body_font, text_w);
@@ -218,11 +223,12 @@ static int prv_layout(GContext *ctx, int width, bool draw) {
       // A dot per event on a hairline rail. The newest one takes the accent;
       // it's the event the status headline is talking about.
       graphics_context_set_fill_color(ctx, i == 0 ? COLOUR_ACCENT : COLOUR_DIM);
-      graphics_fill_rect(ctx, GRect(s_rail_x, y + 4, DOT, DOT), 0, GCornerNone);
+      graphics_fill_rect(ctx, GRect(s_rail_x, y + s_dot_dy, DOT, DOT), 0,
+                         GCornerNone);
       if (i < s_count - 1) {
         graphics_context_set_stroke_color(ctx, COLOUR_RULE);
-        graphics_draw_line(ctx, GPoint(s_rail_x + 2, y + 4 + DOT),
-                           GPoint(s_rail_x + 2, y + entry_h + 4));
+        graphics_draw_line(ctx, GPoint(s_rail_x + 2, y + s_dot_dy + DOT),
+                           GPoint(s_rail_x + 2, y + entry_h + s_dot_dy));
       }
 #endif
       prv_text(ctx, row->label, s_body_font, COLOUR_INK, text_x, y, text_w);
@@ -355,18 +361,24 @@ static void prv_window_load(Window *window) {
   window_set_background_color(window, COLOUR_PAPER);
 
   bool large = bounds.size.w >= 180;
-  s_header_h = large ? 24 : 20;
+  s_header_h = large ? 26 : 20;
   // The round mask cuts into both ends of every line, so it needs the most.
   s_pad = PBL_IF_ROUND_ELSE(16, large ? 10 : 8);
   s_rail_x = s_pad - 2;   // the rail sits just outside the text margin
   s_indent = s_pad + 10;  // text clears the dots
-  s_hero_font = fonts_get_system_font(large ? FONT_KEY_GOTHIC_24_BOLD
-                                            : FONT_KEY_GOTHIC_18_BOLD);
-  s_value_font = fonts_get_system_font(large ? FONT_KEY_GOTHIC_18_BOLD
-                                             : FONT_KEY_GOTHIC_14_BOLD);
-  s_body_font = fonts_get_system_font(large ? FONT_KEY_GOTHIC_18
-                                            : FONT_KEY_GOTHIC_14);
-  s_small_font = fonts_get_system_font(FONT_KEY_GOTHIC_14);
+  s_hero_font = fonts_get_system_font(large ? FONT_KEY_GOTHIC_28_BOLD
+                                            : FONT_KEY_GOTHIC_24_BOLD);
+  s_value_font = fonts_get_system_font(large ? FONT_KEY_GOTHIC_24_BOLD
+                                             : FONT_KEY_GOTHIC_18_BOLD);
+  s_body_font = fonts_get_system_font(large ? FONT_KEY_GOTHIC_24
+                                            : FONT_KEY_GOTHIC_18);
+  // Captions, times and the header stay a step below the body: they label the
+  // content rather than being it, and the contrast is what makes them scannable.
+  s_small_font = fonts_get_system_font(large ? FONT_KEY_GOTHIC_18
+                                             : FONT_KEY_GOTHIC_14);
+  s_caption_dy = large ? 20 : 16;
+  s_day_h = large ? 22 : 17;
+  s_dot_dy = large ? 10 : 7;
 
   s_header_layer = layer_create(GRect(0, 0, bounds.size.w, s_header_h));
   layer_set_update_proc(s_header_layer, prv_header_update);

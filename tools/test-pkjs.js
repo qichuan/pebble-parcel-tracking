@@ -191,6 +191,38 @@ function results(milestone, events) {
     ev.rows[0][1] === 'Out for delivery', ev.rows[0][1]);
 }
 
+// --- a bare ETA date is a local calendar date, not UTC midnight -----------
+// Date.parse("2026-08-06") is UTC midnight, which is still Aug 5 anywhere west
+// of Greenwich — a parcel would be called due a day early.
+{
+  function ymd(offset) {
+    const d = new Date();
+    d.setDate(d.getDate() + offset);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') +
+           '-' + String(d.getDate()).padStart(2, '0');
+  }
+  const app = boot(() => ({ status: 200, body: { data: { trackings: [{
+    tracker: { trackingNumber: 'X' },
+    shipment: { statusMilestone: 'in_transit',
+                delivery: { estimatedDeliveryDate: ymd(0) } },
+    events: [{ description: 'In transit', location: 'X',
+               timestamp: new Date(Date.now() - H).toISOString() }],
+  }] } } }));
+  app.seed([{ nickname: 'A', trackingNumber: 'AAA111' }]);
+  app.emit('appmessage', { payload: { REQUEST: 'list' } });
+  app.settle();
+  const { meta, rows } = unpack(app.lastOf('parcels'));
+  check('today\'s ETA counts as arriving today in local time', meta[0] === '1',
+    meta[0]);
+  check('and flags the row', rows[0][3] === '1', rows[0][3]);
+
+  app.emit('appmessage', { payload: { REQUEST: 'detail', INDEX: 0 } });
+  app.settle();
+  check('EXPECTED reads today, not yesterday',
+    unpack(app.lastOf('events')).meta[4] === 'Arriving today',
+    unpack(app.lastOf('events')).meta[4]);
+}
+
 // --- carrier boilerplate is rewritten, real detail is not -----------------
 {
   const app = boot(() => results('in_transit', [
