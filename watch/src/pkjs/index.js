@@ -20,9 +20,17 @@ var REQUEST_TIMEOUT_MS = 20000;
 var MAX_PARCELS = 12;
 var MAX_EVENTS = 12;
 var MAX_NICKNAME_BYTES = 36;
-var MAX_DESC_BYTES = 160; // the event detail screen scrolls, so give it room
+var MAX_DESC_BYTES = 160; // the detail screen word-wraps, so give it room
 var MAX_LOCATION_BYTES = 40;
 var MAX_LABEL_BYTES = 30;
+var MAX_COURIER_BYTES = 24;
+var MAX_PLACE_BYTES = 28;
+var MAX_ETA_BYTES = 24;
+var MAX_TRACKING_BYTES = 32;
+var MAX_WHEN_BYTES = 24;
+var MAX_DAY_BYTES = 14;
+var MAX_TIME_BYTES = 56; // "1:32 PM · Leipzig, DE"
+var MAX_UPDATED_BYTES = 24;
 
 // --- storage -------------------------------------------------------------
 
@@ -135,6 +143,27 @@ function eventDescription(ev) {
   return ev.description || ev.status || ev.statusCode || ev.statusMilestone || '';
 }
 
+// Ship24 puts the estimate in a different place depending on the plan and the
+// carrier; take whichever spelling turned up.
+function shipmentEta(t) {
+  var shipment = t.shipment || {};
+  var delivery = shipment.delivery || {};
+  return delivery.estimatedDeliveryDate || delivery.estimatedDeliveryDateTime ||
+         shipment.estimatedDeliveryDate || null;
+}
+
+// The courier name shown on the detail header. Ship24 only ever gives us a
+// code, so the user's own courierCode wins when they set one.
+function courierName(parcel, t) {
+  var code = parcel.courierCode || '';
+  if (!code) {
+    var fromTracker = (t.tracker && t.tracker.courierCode) || [];
+    code = (Object.prototype.toString.call(fromTracker) === '[object Array]')
+        ? (fromTracker[0] || '') : fromTracker;
+  }
+  return String(code).replace(/[-_]+/g, ' ').toUpperCase();
+}
+
 // Why the last fetch of a given tracking number failed, by tracking number.
 // Surfaced on the watch row when there's no cached result to show instead; not
 // persisted, since every attempt recomputes it.
@@ -177,6 +206,8 @@ function refreshParcel(parcel, callback) {
     saveCache(parcel.trackingNumber, {
       fetchedAt: Date.now(),
       milestone: milestone,
+      courier: courierName(parcel, t),
+      eta: shipmentEta(t),
       events: events,
     });
     callback(null);
@@ -199,20 +230,164 @@ function refreshSequentially(list, callback) {
 
 // --- formatting ----------------------------------------------------------
 
+// Plain English, not carrier English — the watch shows one of these for half a
+// second and the user shouldn't have to decode it.
 var MILESTONE_LABELS = {
-  pending: 'Pending',
-  info_received: 'Info received',
+  pending: 'Not scanned yet',
+  info_received: 'Label created',
   in_transit: 'In transit',
   out_for_delivery: 'Out for delivery',
-  failed_attempt: 'Failed attempt',
-  available_for_pickup: 'For pickup',
+  failed_attempt: 'Delivery failed',
+  available_for_pickup: 'Ready for pickup',
   delivered: 'Delivered',
-  exception: 'Exception',
+  exception: 'Problem',
 };
 
 function milestoneLabel(milestone) {
   if (MILESTONE_LABELS[milestone]) return MILESTONE_LABELS[milestone];
   return milestone ? milestone.replace(/_/g, ' ') : 'Unknown';
+}
+
+// Boilerplate every carrier writes differently and nobody reads twice. Anchored
+// so only the whole phrase is replaced — "Delivered to neighbour" keeps saying
+// so rather than being flattened to "Delivered".
+var EVENT_REWRITES = [
+  [/^handed over to (the )?last[ -]?mile carrier\.?$/i, 'With local courier'],
+  [/^(shipping )?manifest (has been )?created\.?$/i, 'Label created'],
+  [/^shipment information (has been )?(received|sent to \w+)\.?$/i, 'Label created'],
+  [/^electronic (shipping )?(info|information) (received|submitted)\.?$/i, 'Label created'],
+  [/^the (item|shipment) is out for delivery\.?$/i, 'Out for delivery'],
+];
+
+// Plenty of carriers SHOUT. Sentence case reads better at 14px and loses nothing.
+function unshout(text) {
+  if (!/[A-Z]/.test(text) || /[a-z]/.test(text)) return text;
+  return text.charAt(0) + text.substring(1).toLowerCase();
+}
+
+function tidyEvent(text) {
+  var clean = unshout(String(text || ''));
+  for (var i = 0; i < EVENT_REWRITES.length; i++) {
+    if (EVENT_REWRITES[i][0].test(clean)) return EVENT_REWRITES[i][1];
+  }
+  return clean;
+}
+
+// --- dates ---------------------------------------------------------------
+
+var DAY_NAMES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+              'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function startOfDay(ms) {
+  var d = new Date(ms);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+// Whole calendar days from b to a. Rounded, so a 23- or 25-hour DST day still
+// counts as one day.
+function daysBetween(a, b) {
+  return Math.round((startOfDay(a) - startOfDay(b)) / 86400000);
+}
+
+function clockTime(ms) {
+  var d = new Date(ms);
+  var hours = d.getHours();
+  var suffix = hours < 12 ? 'AM' : 'PM';
+  hours = hours % 12;
+  if (hours === 0) hours = 12;
+  var mins = d.getMinutes();
+  return hours + ':' + (mins < 10 ? '0' + mins : mins) + ' ' + suffix;
+}
+
+function shortDate(ms) {
+  var d = new Date(ms);
+  return MONTHS[d.getMonth()] + ' ' + d.getDate();
+}
+
+// Section heading over a run of events from the same day.
+function dayLabel(ms) {
+  if (!ms) return 'UNDATED';
+  var delta = daysBetween(ms, Date.now());
+  if (delta === 0) return 'TODAY';
+  if (delta === -1) return 'YESTERDAY';
+  var d = new Date(ms);
+  return DAY_NAMES[d.getDay()] + ' ' + MONTHS[d.getMonth()].toUpperCase() + ' ' +
+         d.getDate();
+}
+
+// When the current status happened, for the detail screen's headline block.
+function whenLabel(ms) {
+  if (!ms) return '';
+  var delta = daysBetween(ms, Date.now());
+  if (delta === 0) return 'Today ' + clockTime(ms);
+  if (delta === -1) return 'Yesterday ' + clockTime(ms);
+  return shortDate(ms) + ' ' + clockTime(ms);
+}
+
+function parseEta(raw) {
+  if (!raw) return null;
+  var s = String(raw);
+  // Ship24 usually gives a bare calendar date. That's a date in the user's own
+  // timezone, not an instant — but Date.parse reads "2026-08-06" as UTC
+  // midnight, which is still Aug 5 anywhere west of Greenwich and would report
+  // a parcel as due a day early. Build it from the local calendar instead.
+  var ymd = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (ymd) {
+    return new Date(+ymd[1], +ymd[2] - 1, +ymd[3]).getTime();
+  }
+  var t = Date.parse(s);
+  return isNaN(t) ? null : t;
+}
+
+// --- "is it coming today?" ------------------------------------------------
+//
+// The one question the list screen exists to answer, so it gets its own rules
+// rather than being inferred from the status text.
+
+function arrivingToday(milestone, etaMs) {
+  if (milestone === 'delivered') return false;
+  if (milestone === 'out_for_delivery') return true;
+  return etaMs !== null && daysBetween(etaMs, Date.now()) === 0;
+}
+
+function deliveredToday(milestone, latestMs) {
+  return milestone === 'delivered' && !!latestMs &&
+         daysBetween(latestMs, Date.now()) === 0;
+}
+
+// "EXPECTED" on the detail screen.
+function etaLabel(milestone, etaMs, latestMs) {
+  if (milestone === 'delivered') {
+    if (!latestMs) return 'Arrived';
+    var since = daysBetween(latestMs, Date.now());
+    if (since === 0) return 'Arrived today';
+    if (since === -1) return 'Arrived yesterday';
+    return 'Arrived ' + shortDate(latestMs);
+  }
+  if (etaMs !== null) {
+    var until = daysBetween(etaMs, Date.now());
+    if (until === 0) return 'Arriving today';
+    if (until === 1) return 'Tomorrow';
+    if (until < 0) return 'Was due ' + shortDate(etaMs);
+    var d = new Date(etaMs);
+    return DAY_NAMES[d.getDay()].charAt(0) +
+           DAY_NAMES[d.getDay()].substring(1).toLowerCase() + ', ' + shortDate(etaMs);
+  }
+  if (milestone === 'out_for_delivery') return 'Arriving today';
+  return 'No estimate';
+}
+
+// The list row's second line. Only "delivered" earns a time — it's the one
+// status where when it happened is the fact you came to check.
+function statusLine(milestone, latestMs) {
+  var label = milestoneLabel(milestone);
+  if (milestone !== 'delivered' || !latestMs) return label;
+  var since = daysBetween(latestMs, Date.now());
+  if (since === 0) return label + ' ' + clockTime(latestMs);
+  if (since === -1) return label + ' yesterday';
+  return label + ' ' + shortDate(latestMs);
 }
 
 // The C side copies into fixed byte buffers, so cut on a character boundary
@@ -247,61 +422,101 @@ function truncateBytes(str, maxBytes) {
   return clean;
 }
 
-function timeAgo(ms) {
-  if (!ms) return '';
-  var diff = Date.now() - ms;
-  if (diff < 0) return 'just now';
-  var mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return mins + 'm ago';
-  var hours = Math.floor(mins / 60);
-  if (hours < 24) return hours + 'h ago';
-  var days = Math.floor(hours / 24);
-  if (days < 7) return days + 'd ago';
-  var weeks = Math.floor(days / 7);
-  if (weeks < 5) return weeks + 'w ago';
-  return Math.floor(days / 30) + 'mo ago';
-}
-
 // --- packing -------------------------------------------------------------
+//
+// Both payloads are "field<US>field…" records separated by newlines. The first
+// record of each is metadata about the payload as a whole; the rest are rows.
 
-// "nickname<US>milestone<US>label<US>ago" per parcel.
+// meta: todayCount<US>updated
+// row:  nickname<US>milestone<US>label<US>today
 function packParcels() {
   var parcels = loadParcels().slice(0, MAX_PARCELS);
   var lines = [];
+  var todayCount = 0;
+  var newestFetch = 0;
+
   for (var i = 0; i < parcels.length; i++) {
     var p = parcels[i];
     var cached = loadCache(p.trackingNumber);
     var milestone = cached ? cached.milestone : '';
     var latest = cached && cached.events && cached.events.length
         ? cached.events[0].at : null;
+    var etaMs = cached ? parseEta(cached.eta) : null;
+
+    var soon = cached ? arrivingToday(milestone, etaMs) : false;
+    var justArrived = cached ? deliveredToday(milestone, latest) : false;
+    if (soon) todayCount++;
+    if (cached && cached.fetchedAt > newestFetch) newestFetch = cached.fetchedAt;
+
     // A cached result outranks a failed refresh — stale status beats no status.
     var label;
     if (cached) {
-      label = milestoneLabel(milestone);
+      label = statusLine(milestone, latest);
     } else if (s_errors[p.trackingNumber]) {
-      label = truncateBytes(s_errors[p.trackingNumber], MAX_LABEL_BYTES);
+      label = s_errors[p.trackingNumber];
     } else {
       label = 'Checking…';
     }
     lines.push([
       truncateBytes(p.nickname || p.trackingNumber, MAX_NICKNAME_BYTES),
       milestone,
-      label,
-      timeAgo(latest),
+      truncateBytes(label, MAX_LABEL_BYTES),
+      (soon || justArrived) ? '1' : '0',
     ].join(US));
   }
-  return lines.join('\n');
+
+  // The glance bar counts only what is still on its way: a parcel that already
+  // landed this morning isn't something the user is waiting for.
+  var meta = [
+    String(todayCount),
+    newestFetch ? clockTime(newestFetch) : '',
+  ].join(US);
+  return [meta].concat(lines).join('\n');
 }
 
-// "when<US>description<US>location" per event, newest first.
-function packEvents(trackingNumber) {
-  var cached = loadCache(trackingNumber);
-  if (!cached || !cached.events) return '';
-  var lines = [];
-  for (var i = 0; i < cached.events.length; i++) {
-    var e = cached.events[i];
-    lines.push([timeAgo(e.at), e.description, e.location].join(US));
+// meta: courier<US>status<US>when<US>place<US>eta<US>tracking<US>milestone
+// row:  day<US>label<US>time   — day is set only on the first event of each day,
+//                                and the C side draws it as a section heading.
+function packEvents(parcel) {
+  var cached = loadCache(parcel.trackingNumber);
+  if (!cached) return '';
+  var events = cached.events || [];
+  var milestone = cached.milestone || '';
+  var latest = events.length ? events[0].at : null;
+  var here = events.length ? (events[0].location || '') : '';
+
+  var lines = [[
+    truncateBytes(cached.courier || parcel.trackingNumber, MAX_COURIER_BYTES),
+    truncateBytes(statusLine(milestone, null), MAX_LABEL_BYTES),
+    truncateBytes(whenLabel(latest), MAX_WHEN_BYTES),
+    truncateBytes(here, MAX_PLACE_BYTES),
+    truncateBytes(etaLabel(milestone, parseEta(cached.eta), latest), MAX_ETA_BYTES),
+    truncateBytes(parcel.trackingNumber, MAX_TRACKING_BYTES),
+    milestone,
+  ].join(US)];
+
+  var lastDay = null;
+  var lastPlace = here;
+  for (var i = 0; i < events.length; i++) {
+    var e = events[i];
+    var day = dayLabel(e.at);
+    var heading = (day === lastDay) ? '' : day;
+    lastDay = day;
+
+    // The city already sits at the top under NOW AT, so a row only names one
+    // when the parcel actually moved between there and the row above it.
+    var time = e.at ? clockTime(e.at) : '';
+    var place = e.location || '';
+    if (place && place !== lastPlace) {
+      time = time ? time + ' · ' + place : place;
+      lastPlace = place;
+    }
+
+    lines.push([
+      truncateBytes(heading, MAX_DAY_BYTES),
+      truncateBytes(tidyEvent(e.description), MAX_DESC_BYTES),
+      truncateBytes(time, MAX_TIME_BYTES),
+    ].join(US));
   }
   return lines.join('\n');
 }
@@ -358,8 +573,7 @@ function deliverEvents(index) {
   // Always answer at once — the watch re-asks if a request goes unanswered, and
   // a cold fetch can easily outlast that window. An empty payload with the
   // pending flag set keeps the watch on its loading screen.
-  send('events', cached ? packEvents(parcel.trackingNumber) : '',
-       isStale(cached));
+  send('events', cached ? packEvents(parcel) : '', isStale(cached));
   if (cached && !isStale(cached)) return;
 
   refreshParcel(parcel, function (err) {
@@ -367,7 +581,7 @@ function deliverEvents(index) {
       if (!cached) sendError(err);
       return;
     }
-    send('events', packEvents(parcel.trackingNumber), false);
+    send('events', packEvents(parcel), false);
   });
 }
 
@@ -468,3 +682,4 @@ Pebble.addEventListener('webviewclosed', function (e) {
   }
   registerNext();
 });
+

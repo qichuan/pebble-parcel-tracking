@@ -51,8 +51,9 @@ npm run test:settings # docs/index.html driven in jsdom
 
 `tools/test-pkjs.js` asserts the **byte budgets** the packed payloads must obey.
 Those numbers mirror the fixed-size buffers in `watch/src/c/*.c` — if you widen
-`MAX_DESC_BYTES` in pkjs, widen `EventRow.description` and the `C_BUFFERS` table
-in the test to match, or the C side will truncate mid-character.
+`MAX_DESC_BYTES` in pkjs, widen `EventRow.label` and the `C_BUFFERS` table in the
+test to match, or the C side will truncate mid-character. The same goes for every
+other `MAX_*_BYTES`: each one names a buffer in `main.c` or `timeline_window.c`.
 
 Verifying UI changes means the emulator, not just a green build. The pkjs has no
 mock mode: to see real rows, either configure a Ship24 key on a phone, or
@@ -71,10 +72,21 @@ Keys live in `watch/package.json` `messageKeys`: `REQUEST`, `INDEX`, `TYPE`,
   coming" flag** (1 = an interim answer, 0 = final).
 
 Packed payloads use `\x1f` (unit separator) between fields and `\n` between
-records — pkjs strips both from carrier text, so neither can be injected:
+records — pkjs strips both from carrier text, so neither can be injected. **The
+first record of each payload is metadata about the payload as a whole**, not a
+row; the C side reads line 0 unconditionally and rows after it:
 
-- `parcels`: `nickname \x1f milestoneCode \x1f label \x1f ago`
-- `events`: `when \x1f description \x1f location`, newest first
+- `parcels`
+  - meta: `todayCount \x1f updated` (`updated` is a clock time like `2:40 PM`)
+  - row: `nickname \x1f milestoneCode \x1f label \x1f today` (`today` is `1`/`0`
+    and drives the left-gutter stripe; `todayCount` counts only parcels still on
+    their way, so one that already landed this morning isn't "arriving")
+- `events`
+  - meta: `courier \x1f status \x1f when \x1f place \x1f eta \x1f tracking \x1f milestone`
+  - row: `day \x1f label \x1f time`, newest first. `day` is set only on the first
+    event of each day and renders as a section heading; `time` gains
+    ` · <location>` only when the parcel moved between that event and the one
+    above it, since the current city already sits at the top under NOW AT.
 
 **Every request is answered immediately**, from cache or with an empty payload
 carrying the pending flag, because the watch re-asks after 5s of silence
@@ -90,20 +102,39 @@ own `ready` handler.
 The C is a dumb renderer — all networking, sorting, truncation and wording
 happen in pkjs. To change what a screen says, edit the JS.
 
-- `main.c` — parcel list. Long-press SELECT force-refreshes. On colour
-  rectangular screens each row gets a status-coloured bar in the left gutter
-  (`status_colour.c`); round screens skip it and centre the section header,
-  which the circular mask would otherwise clip.
-- `timeline_window.c` — events for one parcel, under a status-coloured header
-  showing nickname + current status.
-- `event_window.c` — one event's full text in a `ScrollLayer`, framed in the
-  status colour. This is why `MAX_DESC_BYTES` is generous (160): menu rows
-  ellipsize anyway, so the budget exists for this screen.
-- `comm.c` — AppMessage transport (4096/128 buffers). Two independent retries:
-  three send attempts if the outbox won't take the message, and three re-asks if
-  a sent request goes unanswered. Windows register handlers via
-  `comm_set_handlers` in their `.appear` handler, so whichever window is visible
-  receives the replies.
+There are **two screens**, not three: the list, and one long scrolling detail
+page. Long event text word-wraps on the detail page rather than being ellipsized
+and opened on a screen of its own, which is why `MAX_DESC_BYTES` is generous
+(160).
+
+- `main.c` — parcel list, drawn cell by cell rather than with
+  `menu_cell_basic_draw`. The title bar is a glance bar that answers "is
+  anything arriving today?", and a 4px stripe in the left gutter marks the rows
+  that land today. Long-press SELECT force-refreshes. Round screens drop the
+  gutter stripe and the inverted bar (the circular mask clips both) and centre
+  everything instead. Metrics are chosen from the real screen width at
+  `window_load`, not from platform macros, so a wider panel gets larger type and
+  taller rows without a new `#if`.
+- `timeline_window.c` — one parcel as a single `ScrollLayer`: status headline on
+  a status-coloured block, then NOW AT / EXPECTED / TRACKING, then the full
+  history grouped by day on a dotted rail. `prv_layout` walks the page once to
+  measure it (for the scroll height) and again to draw it — one code path, so
+  the two can't drift apart. Pass `draw = false` and it only measures.
+- `status_colour.c` — the design palette (`COLOUR_*` in the header) plus the
+  milestone → colour mapping. Every value sits inside Pebble's 64-colour space
+  with channels of 00/55/AA/FF, so nothing dithers unexpectedly.
+- `comm.c` — AppMessage transport (4096/128 buffers). Three failure modes, three
+  answers: the outbox refusing the message (retry with growing delay), a sent
+  request going unanswered (re-ask with growing delay, a long tail because the
+  window has to cover phone-side JS booting), and Bluetooth simply being gone.
+  That last one is why `connection_service` is subscribed: with no phone there,
+  retrying only burns the budget, so the request is parked and **replayed the
+  moment the link returns**. After giving up entirely a slow background retry
+  keeps running, so a blip heals itself without the user pressing anything.
+  Windows register handlers via `comm_set_handlers` in their `.appear` handler,
+  so whichever window is visible receives the replies — and call `comm_cancel`
+  on the way out, or an abandoned request's retries surface as an error on the
+  window behind it.
 
 Buffers are fixed-size and static (aplite has 24 KB of RAM for everything);
 `prv_parse_*` reads the payload one line at a time rather than copying it.
@@ -112,7 +143,16 @@ Buffers are fixed-size and static (aplite has 24 KB of RAM for everything);
 
 - `localStorage`: `api_key`, `parcels` (array of
   `{nickname, trackingNumber, courierCode, trackerId}`), and
-  `cache_<trackingNumber>` (`{fetchedAt, milestone, events}`), TTL 5 minutes.
+  `cache_<trackingNumber>` (`{fetchedAt, milestone, courier, eta, events}`),
+  TTL 5 minutes.
+- Wording is pkjs's job, and the design leans on it: `MILESTONE_LABELS` keeps
+  statuses in plain English, `EVENT_REWRITES` replaces carrier boilerplate
+  ("Handed over to Last Mile Carrier" → "With local courier") with **anchored**
+  patterns so only whole phrases match — "Delivered to neighbour at 14B" must
+  keep saying so — and `unshout` sentence-cases carriers that SHOUT.
+- "Arriving today" has its own rules (`arrivingToday` / `deliveredToday`) rather
+  than being inferred from status text, because it's the one question the list
+  screen exists to answer.
 - Ship24 flow is **tracker-based** (the per-shipment plans): `POST /trackers`
   once per new number on settings save, then
   `GET /trackers/search/{trackingNumber}/results` to refresh. Registration
