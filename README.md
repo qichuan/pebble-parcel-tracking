@@ -1,5 +1,7 @@
 # Parcel Tracking for Pebble
 
+**[⌚ Install from the Rebble appstore](https://apps.repebble.com/b29dcf9df26f41888a420a31)**
+
 Check your parcels from your wrist. See every parcel's current delivery status
 at a glance, then open one for its full carrier timeline.
 
@@ -8,20 +10,26 @@ carriers. You bring your own API key — nothing goes through anyone else's serv
 
 ## Screens
 
-- **Parcel list** — one row per parcel: your name for it, its status, and how
-  long ago that status changed. On colour watches a bar in the left gutter
-  shows the status at a glance (green delivered, red exception, orange out for
-  delivery, blue in transit).
-- **Timeline** — every carrier scan for that parcel, newest first, with location
-  and time.
-- **Event** — the full text of one scan, scrollable.
+| Parcel list | Parcel detail | Its history |
+|:---:|:---:|:---:|
+| ![Parcel list](developer-portal/screenshots/emery/parcels.png) | ![Parcel detail](developer-portal/screenshots/emery/detail.png) | ![Event history](developer-portal/screenshots/emery/history.png) |
+
+- **Parcel list** — one row per parcel: your name for it and its status. The
+  title bar answers "is anything arriving today?", and on colour watches a
+  stripe in the left gutter marks the rows that land today.
+- **Parcel detail** — one scrolling page: the status headline on a
+  status-coloured block (green delivered, red exception, orange out for
+  delivery, blue in transit), then where the parcel is now, when it's expected,
+  and the tracking number.
+- **History** — keep scrolling on that same page for every carrier scan, newest
+  first, grouped by day, with the time and any change of location.
 
 ## Controls
 
 | Button              | Action                          |
 |---------------------|---------------------------------|
 | Up / Down           | Move through the list           |
-| Select              | Open the parcel, then the event |
+| Select              | Open the parcel                 |
 | **Long-press Select** | Force a refresh from Ship24   |
 | Back                | Return to the previous screen   |
 
