@@ -1,0 +1,7 @@
+Wondering if anything is arriving today? This app answers that question in an instant.
+
+Open any shipment to check its current status, location, estimated delivery time, and complete past tracking history. Want an instant update? Just long-press to force a refresh.
+
+Setup Note: This app requires your own free Ship24 API key (grab one for free at https://www.ship24.com/tracking-api). Enter your key in the app settings on your phone to get started 
+
+Compatible with all Pebble smartwatches

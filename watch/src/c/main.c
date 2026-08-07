@@ -425,16 +425,30 @@ static void prv_on_error(const char *message) {
 
 static void prv_choose_metrics(GRect bounds) {
 #if defined(PBL_ROUND)
-  s_header_h = 26;
-  s_row_h = 48;
-  s_name_y = 2;
-  s_sub_y = 24;
-  s_pad = 16; // the mask cuts into both ends of every line
-  s_name_font = fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
-  s_sub_font = fonts_get_system_font(FONT_KEY_GOTHIC_14);
-  s_head_font = fonts_get_system_font(FONT_KEY_GOTHIC_14);
+  // Round screens come in two sizes: chalk's 180 and the 260 of the newer
+  // ones. Scale with the panel here too, or the larger watch renders chalk's
+  // proportions with dead space above and below them.
+  if (bounds.size.w >= 200) {
+    s_header_h = 34;
+    s_row_h = 64;
+    s_name_y = 6;
+    s_sub_y = 34;
+    s_pad = 26; // the mask cuts into both ends of every line
+    s_name_font = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
+    s_sub_font = fonts_get_system_font(FONT_KEY_GOTHIC_18);
+    s_head_font = fonts_get_system_font(FONT_KEY_GOTHIC_18);
+  } else {
+    s_header_h = 26;
+    s_row_h = 48;
+    s_name_y = 2;
+    s_sub_y = 24;
+    s_pad = 16;
+    s_name_font = fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
+    s_sub_font = fonts_get_system_font(FONT_KEY_GOTHIC_14);
+    s_head_font = fonts_get_system_font(FONT_KEY_GOTHIC_14);
+  }
 #else
-  if (bounds.size.w >= 180) {
+  if (bounds.size.w >= 200) {
     // Emery and friends: type and rows step up with the panel.
     s_header_h = 26;
     s_row_h = 58;

@@ -360,10 +360,12 @@ static void prv_window_load(Window *window) {
   GRect bounds = layer_get_bounds(root);
   window_set_background_color(window, COLOUR_PAPER);
 
-  bool large = bounds.size.w >= 180;
+  // Same threshold as the list uses, so a watch can't end up with big type on
+  // one screen and small type on the other. Chalk's 180 sits below it.
+  bool large = bounds.size.w >= 200;
   s_header_h = large ? 26 : 20;
   // The round mask cuts into both ends of every line, so it needs the most.
-  s_pad = PBL_IF_ROUND_ELSE(16, large ? 10 : 8);
+  s_pad = PBL_IF_ROUND_ELSE(large ? 24 : 16, large ? 10 : 8);
   s_rail_x = s_pad - 2;   // the rail sits just outside the text margin
   s_indent = s_pad + 10;  // text clears the dots
   s_hero_font = fonts_get_system_font(large ? FONT_KEY_GOTHIC_28_BOLD
