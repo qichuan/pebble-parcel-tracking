@@ -1,7 +1,7 @@
 {
   "name": "Parcel Tracking",
   "author": "Zhang Qichuan",
-  "version": "1.0.0",
+  "version": "1.1",
   "keywords": ["pebble-app, parcel, package, tracking, shipping, delivery, ship24"],
   "private": true,
   "dependencies": {},
