@@ -5,7 +5,8 @@
   "scripts": {
     "test": "node test-pkjs.js && node test-settings.js",
     "test:pkjs": "node test-pkjs.js",
-    "test:settings": "node test-settings.js"
+    "test:settings": "node test-settings.js",
+    "gen:couriers": "node gen-couriers.js"
   },
   "devDependencies": {
     "jsdom": "^30.0.1"

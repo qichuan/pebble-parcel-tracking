@@ -44,8 +44,9 @@ and doesn't spend API calls.
 2. **Install the app** on your watch.
 3. **Open the app's settings** from the Pebble phone app
    (the gear icon next to Parcel Tracking).
-4. Paste your API key, add a parcel (a name, the tracking number, and optionally
-   a courier code like `dhl` — leave it blank to let Ship24 work it out), and
+4. Paste your API key, add a parcel (a name, the tracking number, and
+   optionally a courier — start typing and pick it from the list of every
+   courier Ship24 supports, or leave it blank to let Ship24 work it out), and
    tap **Save**.
 
 Your watch picks up the new parcels straight away. Up to 12 parcels are shown.

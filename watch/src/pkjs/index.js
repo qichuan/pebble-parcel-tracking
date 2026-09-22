@@ -643,18 +643,23 @@ Pebble.addEventListener('webviewclosed', function (e) {
     var number = String(incoming[i].trackingNumber || '').replace(/\s+/g, '');
     if (!number || kept[number]) continue;
     kept[number] = true;
-    // Carry the trackerId over so an unchanged parcel isn't re-registered.
+    var courierCode = String(incoming[i].courierCode || '').replace(/\s+/g, '');
+    // Carry the trackerId over so an unchanged parcel isn't re-registered —
+    // but only while the courier is unchanged too, since a new courier has to
+    // reach Ship24, and it only ever travels with a registration.
     var trackerId = '';
     for (var j = 0; j < previous.length; j++) {
       if (previous[j].trackingNumber === number) {
-        trackerId = previous[j].trackerId || '';
+        if ((previous[j].courierCode || '') === courierCode) {
+          trackerId = previous[j].trackerId || '';
+        }
         break;
       }
     }
     next.push({
       nickname: String(incoming[i].nickname || '').replace(/^\s+|\s+$/g, '') || number,
       trackingNumber: number,
-      courierCode: String(incoming[i].courierCode || '').replace(/\s+/g, ''),
+      courierCode: courierCode,
       trackerId: trackerId,
     });
   }

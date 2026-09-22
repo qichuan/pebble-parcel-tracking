@@ -395,7 +395,7 @@ function results(milestone, events) {
   const registered = [];
   const app = boot((m, u, body) => {
     if (m === 'POST') {
-      registered.push(JSON.parse(body).trackingNumber);
+      registered.push(JSON.parse(body).courierCode || JSON.parse(body).trackingNumber);
       return { status: 200, body: { data: { tracker: { trackerId: 'tr_' + registered.length } } } };
     }
     return results('in_transit', []);
@@ -411,8 +411,8 @@ function results(milestone, events) {
   app.settle();
 
   check('api key stored', app.store.api_key === 'new-key', app.store.api_key);
-  check('new tracking number registered with Ship24',
-    registered.length === 1 && registered[0] === 'NEW111', registered.join(','));
+  check('new tracking number registered with Ship24, courier and all',
+    registered.length === 1 && registered[0] === 'dhl', registered.join(','));
   check('trackerId kept for next time',
     JSON.parse(app.store.parcels)[0].trackerId === 'tr_1',
     JSON.parse(app.store.parcels)[0].trackerId);
@@ -430,6 +430,19 @@ function results(milestone, events) {
   check('unchanged parcel not re-registered', registered.length === 1, registered.length);
   check('blank key on save keeps the stored one', app.store.api_key === 'new-key',
     app.store.api_key);
+
+  // Picking a different courier has to reach Ship24, and the only thing that
+  // carries it there is a registration — so the old trackerId is dropped.
+  app.emit('webviewclosed', { response: encodeURIComponent(JSON.stringify({
+    action: 'save',
+    parcels: [{ nickname: 'New', trackingNumber: 'NEW111', courierCode: 'au-post' }],
+  })) });
+  app.settle();
+  check('a changed courier re-registers the parcel',
+    registered.length === 2 && registered[1] === 'au-post', registered.join(','));
+  check('and the new courier is stored',
+    JSON.parse(app.store.parcels)[0].courierCode === 'au-post',
+    JSON.parse(app.store.parcels)[0].courierCode);
 }
 
 console.log(failures ? '\n' + failures + ' FAILED' : '\nall pkjs checks passed');
